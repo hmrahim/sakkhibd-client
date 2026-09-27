@@ -91,6 +91,35 @@ export const StatCard = ({ icon: Icon, label, value, sub, trend, trendUp, color,
   </div>
 );
 
+export const MiniStatCard = ({ icon: Icon, label, value, color = '#22c55e', percent }) => (
+  <div
+    className="group relative rounded-2xl p-4 border border-white/10 overflow-hidden transition-all duration-200 hover:border-white/20 hover:-translate-y-0.5 hover:shadow-lg"
+    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+  >
+    <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ background: color }} />
+    <div className="flex items-center gap-3 pl-1.5">
+      <div className="p-2.5 rounded-xl shrink-0 transition-transform duration-200 group-hover:scale-110" style={{ background: `${color}22` }}>
+        <Icon size={18} style={{ color }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-xl font-extrabold text-white leading-tight tracking-tight">{value}</div>
+        <div className="text-[11px] text-white/45 font-medium truncate">{label}</div>
+      </div>
+      {percent !== undefined && (
+        <span className="ml-auto text-[10px] font-bold px-2 py-1 rounded-full shrink-0" style={{ background: `${color}18`, color }}>
+          {percent}%
+        </span>
+      )}
+    </div>
+  </div>
+);
+
+export const OverviewStrip = ({ items }) => (
+  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+    {items.map((item) => <MiniStatCard key={item.label} {...item} />)}
+  </div>
+);
+
 export const Pill = ({ children, active, onClick, color = '#006A4E' }) => (
   <button onClick={onClick}
     className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all border cursor-pointer"

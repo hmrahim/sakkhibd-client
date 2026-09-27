@@ -4,16 +4,15 @@ import { useReports } from '../context/ReportContext';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, FileText, BarChart3, Tag, Activity, Settings,
-  Bell, Menu, X, ChevronRight, ChevronLeft, ArrowLeft, LogOut
+  Bell, Menu, X, ChevronRight, ChevronLeft, ArrowLeft, LogOut, MessageSquare
 } from 'lucide-react';
-
-
 const navItems = [
   { path: '/dashboard',           icon: LayoutDashboard, label: 'Overview', end: true },
   { path: '/dashboard/reports',    icon: FileText,        label: 'Reports' },
   { path: '/dashboard/analytics',  icon: BarChart3,       label: 'Analytics' },
   { path: '/dashboard/categories', icon: Tag,             label: 'Categories' },
   { path: '/dashboard/activity',   icon: Activity,        label: 'Activity Feed' },
+  { path: '/dashboard/comments',   icon: MessageSquare,   label: 'Comments' },
   { path: '/dashboard/settings',   icon: Settings,        label: 'Settings' },
 ];
 
@@ -52,6 +51,7 @@ export default function Dashboard() {
     '/dashboard/analytics':  { title: 'Analytics', sub: 'Trends, distributions & insights' },
     '/dashboard/categories': { title: 'Categories', sub: 'Active departments & complaint categories' },
     '/dashboard/activity':   { title: 'Activity Feed', sub: 'Live platform events & user feedback' },
+    '/dashboard/comments':   { title: 'Comment Moderation', sub: 'View, hide & delete comments across all reports' },
     '/dashboard/settings':   { title: 'Settings', sub: 'Platform configuration' },
   };
 

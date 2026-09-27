@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useReports } from '../context/ReportContext';
 import {
   DIVISION_DISTRICTS,
   CATEGORY_NAMES_TRANSLATION,
   DIVISION_NAMES_TRANSLATION,
 } from '../data/initialData';
-import { ShieldCheck, RefreshCw, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const Ledger = () => {
   const {
@@ -118,6 +118,21 @@ const Ledger = () => {
 
   const sortedDivsForTop = [...divRows].sort((a, b) => b.count - a.count);
   const topDiv = sortedDivsForTop[0]?.count ? sortedDivsForTop[0].label : '—';
+
+  // ---------- Department Registry pagination ----------
+  // Category count varies with real data (could be 3 categories or 30+),
+  // which used to make this card grow/shrink unpredictably next to the
+  // fixed 8-row Division Registry. Paginating it to the SAME row count as
+  // Division Registry keeps both cards locked to an identical height.
+  const DEPT_PAGE_SIZE = divRows.length || 8;
+  const [deptPage, setDeptPage] = useState(1);
+  const deptTotalPages = Math.max(1, Math.ceil(deptRows.length / DEPT_PAGE_SIZE));
+  const currentDeptPage = Math.min(deptPage, deptTotalPages);
+  const deptPageStart = (currentDeptPage - 1) * DEPT_PAGE_SIZE;
+  const paginatedDeptRows = deptRows.slice(deptPageStart, deptPageStart + DEPT_PAGE_SIZE);
+  const deptEmptySlots = Math.max(0, DEPT_PAGE_SIZE - paginatedDeptRows.length);
+
+  const goToDeptPage = (p) => setDeptPage(Math.min(deptTotalPages, Math.max(1, p)));
 
   const lastUpdatedText = analyticsUpdatedAt
     ? new Date(analyticsUpdatedAt).toLocaleTimeString(lang === 'bn' ? 'bn-BD' : 'en-US', {
@@ -233,41 +248,97 @@ const Ledger = () => {
         </div>
 
         {/* Registry Tables */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white p-6 rounded-3xl shadow border border-gray-100">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          {/* Department Registry — paginated so it always renders exactly
+              DEPT_PAGE_SIZE rows, keeping this card the same height as the
+              fixed-size Division Registry no matter how many categories
+              actually have reports. */}
+          <div className="bg-white p-6 rounded-3xl shadow border border-gray-100 flex flex-col">
             <h3 className="font-extrabold text-base text-gray-800 mb-1">{t.deptRegistryTitle}</h3>
             <p className="text-xs text-gray-400 mb-4">{t.deptRegistrySub}</p>
-            <div className="space-y-2 text-xs">
-              {deptRows.length === 0 && (
+
+            <div className="space-y-2 text-xs flex-1">
+              {deptRows.length === 0 ? (
                 <p className="text-gray-400 py-4 text-center">{t.allReportsTag} — 0</p>
-              )}
-              {deptRows.map((d, i) => {
-                const pct = totalReports ? Math.round((d.count / totalReports) * 100) : 0;
-                return (
-                  <div key={d.key} className="flex items-center justify-between py-2 border-b border-gray-100 font-mono">
-                    <span className="text-gray-400 w-6">{String(i + 1).padStart(2, '0')}</span>
-                    <span className="font-sans font-medium text-gray-800 flex-1 ml-2">{d.label}</span>
-                    <div className="w-20 mx-3 progress-track">
-                      <div className="progress-fill bg-[#006A4E]" style={{ width: `${pct}%` }}></div>
+              ) : (
+                <>
+                  {paginatedDeptRows.map((d, i) => {
+                    const pct = totalReports ? Math.round((d.count / totalReports) * 100) : 0;
+                    return (
+                      <div key={d.key} className="flex items-center justify-between py-2 border-b border-gray-100 font-mono">
+                        <span className="text-gray-400 w-6">{String(deptPageStart + i + 1).padStart(2, '0')}</span>
+                        <span className="font-sans font-medium text-gray-800 flex-1 ml-2 truncate">{d.label}</span>
+                        <div className="w-20 mx-3 progress-track">
+                          <div className="progress-fill bg-[#006A4E]" style={{ width: `${pct}%` }}></div>
+                        </div>
+                        <b className="w-12 text-right">{d.count} {t.itemsUnit}</b>
+                        <span className="text-[#F42A41] font-bold w-24 text-right">৳{d.sum.toLocaleString('en-US')}</span>
+                      </div>
+                    );
+                  })}
+
+                  {/* Invisible spacer rows — a partially-filled last page
+                      still occupies the exact same height as every other
+                      page (and therefore the Division Registry card). */}
+                  {Array.from({ length: deptEmptySlots }).map((_, i) => (
+                    <div
+                      key={`dept-spacer-${i}`}
+                      className="flex items-center justify-between py-2 border-b border-transparent invisible"
+                      aria-hidden="true"
+                    >
+                      <span className="w-6">00</span>
+                      <span className="flex-1 ml-2">—</span>
+                      <div className="w-20 mx-3 progress-track"></div>
+                      <b className="w-12 text-right">0</b>
+                      <span className="w-24 text-right">0</span>
                     </div>
-                    <b className="w-12 text-right">{d.count} {t.itemsUnit}</b>
-                    <span className="text-[#F42A41] font-bold w-24 text-right">৳{d.sum.toLocaleString('en-US')}</span>
-                  </div>
-                );
-              })}
+                  ))}
+                </>
+              )}
+            </div>
+
+            {/* Pagination — always rendered (even with a single page) so
+                this card's footer height matches the Division Registry's
+                footer below, regardless of how much data exists. */}
+            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <button
+                onClick={() => goToDeptPage(currentDeptPage - 1)}
+                disabled={currentDeptPage === 1}
+                aria-label={lang === 'bn' ? 'পূর্ববর্তী পৃষ্ঠা' : 'Previous page'}
+                className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-[#006A4E] hover:border-[#006A4E]/30 disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-500 disabled:hover:border-gray-200 transition-colors cursor-pointer disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={15} />
+              </button>
+
+              <span className="text-[11px] font-semibold text-gray-500 font-mono">
+                {lang === 'bn'
+                  ? `পৃষ্ঠা ${currentDeptPage} / ${deptTotalPages}`
+                  : `Page ${currentDeptPage} of ${deptTotalPages}`}
+              </span>
+
+              <button
+                onClick={() => goToDeptPage(currentDeptPage + 1)}
+                disabled={currentDeptPage === deptTotalPages}
+                aria-label={lang === 'bn' ? 'পরবর্তী পৃষ্ঠা' : 'Next page'}
+                className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-[#006A4E] hover:border-[#006A4E]/30 disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-500 disabled:hover:border-gray-200 transition-colors cursor-pointer disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={15} />
+              </button>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-3xl shadow border border-gray-100">
+          {/* Division Registry — fixed at 8 rows (one per division), so it
+              naturally sets the reference height for both cards. */}
+          <div className="bg-white p-6 rounded-3xl shadow border border-gray-100 flex flex-col">
             <h3 className="font-extrabold text-base text-gray-800 mb-1">{t.divRegistryTitle}</h3>
             <p className="text-xs text-gray-400 mb-4">{t.divRegistrySub}</p>
-            <div className="space-y-2 text-xs">
+            <div className="space-y-2 text-xs flex-1">
               {divRows.map((d, i) => {
                 const pct = totalReports ? Math.round((d.count / totalReports) * 100) : 0;
                 return (
                   <div key={d.key} className="flex items-center justify-between py-2 border-b border-gray-100 font-mono">
                     <span className="text-gray-400 w-6">{String(i + 1).padStart(2, '0')}</span>
-                    <span className="font-sans font-medium text-gray-800 flex-1 ml-2">{d.label}</span>
+                    <span className="font-sans font-medium text-gray-800 flex-1 ml-2 truncate">{d.label}</span>
                     <div className="w-20 mx-3 progress-track">
                       <div className="progress-fill bg-[#004d38]" style={{ width: `${pct}%` }}></div>
                     </div>
@@ -276,6 +347,15 @@ const Ledger = () => {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Footer note — occupies the same vertical space as the
+                Department Registry's pagination bar so both cards' total
+                heights line up exactly. */}
+            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-center">
+              <span className="text-[11px] font-semibold text-gray-400 font-mono">
+                {lang === 'bn' ? `সর্বমোট ${divRows.length}টি বিভাগ` : `All ${divRows.length} divisions shown`}
+              </span>
             </div>
           </div>
         </div>

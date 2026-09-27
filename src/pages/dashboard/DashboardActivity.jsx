@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useReports } from '../../context/ReportContext';
-import { MessageSquare, FileText } from 'lucide-react';
+import { MessageSquare, FileText, Activity, Users } from 'lucide-react';
+import { OverviewStrip } from './DashboardCommon';
 
 export default function DashboardActivity() {
   const { reports } = useReports();
 
-  const feed = reports.flatMap(r => [
+  const fullFeed = useMemo(() => reports.flatMap(r => [
     ...(r.comments || []).map(c => ({
       type: 'comment',
       report: r.title,
@@ -24,9 +25,25 @@ export default function DashboardActivity() {
       icon: FileText,
       color: '#22c55e'
     }
-  ]).slice(0, 40);
+  ]), [reports]);
+
+  const feed = fullFeed.slice(0, 40);
+
+  // Real activity-feed-specific stats for THIS page.
+  const commentCount = useMemo(() => fullFeed.filter(f => f.type === 'comment').length, [fullFeed]);
+  const reportEventCount = useMemo(() => fullFeed.filter(f => f.type === 'report').length, [fullFeed]);
+  const uniqueAuthors = useMemo(() => new Set(fullFeed.map(f => f.author).filter(Boolean)).size, [fullFeed]);
+
+  const overviewItems = [
+    { icon: Activity,      label: 'Total Events',   value: fullFeed.length,    color: '#3b82f6' },
+    { icon: FileText,      label: 'New Reports',    value: reportEventCount,   color: '#22c55e' },
+    { icon: MessageSquare, label: 'Comments',       value: commentCount,       color: '#a855f7' },
+    { icon: Users,         label: 'Contributors',   value: uniqueAuthors,      color: '#f59e0b' },
+  ];
 
   return (
+    <div className="space-y-5">
+    <OverviewStrip items={overviewItems} />
     <div className="rounded-2xl border border-white/10 overflow-hidden"
       style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))' }}>
       <div className="px-5 py-4 border-b border-white/10">
@@ -59,6 +76,7 @@ export default function DashboardActivity() {
           );
         })}
       </div>
+    </div>
     </div>
   );
 }

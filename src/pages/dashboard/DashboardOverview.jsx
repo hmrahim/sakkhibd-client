@@ -1,19 +1,105 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useReports } from '../../context/ReportContext';
 import {
   FileText, ThumbsUp, MessageSquare, Database, MapPin,
-  ArrowUpRight, Target, Award, Zap, Flag
+  ArrowUpRight, Target, Award, Zap, Flag, RefreshCw, Loader2,
+  Clock, CheckCircle2, XCircle
 } from 'lucide-react';
-import { StatCard, DonutChart, StatusBadge, CATEGORY_COLORS } from './DashboardCommon';
+import { StatCard, DonutChart, StatusBadge, CATEGORY_COLORS, OverviewStrip } from './DashboardCommon';
+
+// Try every timestamp field a report might carry (backend Mongo docs use
+// createdAt; locally cached / seed records may only have a display "date").
+// Returns NaN when nothing parseable is found, so callers can gracefully
+// skip that record instead of pretending it happened "now".
+const getReportTimestamp = (r) => {
+  const candidates = [r.createdAt, r.updatedAt, r.timestamp, r.date];
+  for (const c of candidates) {
+    if (!c) continue;
+    const ts = new Date(c).getTime();
+    if (!Number.isNaN(ts)) return ts;
+  }
+  return NaN;
+};
+
+// Split a chronologically-ordered array into N equal buckets and sum a
+// derived value per bucket — used to build real (not fabricated) sparklines.
+const bucketize = (arr, mapFn, buckets = 7) => {
+  if (!arr.length) return Array(buckets).fill(0);
+  const size = Math.max(1, Math.ceil(arr.length / buckets));
+  const out = [];
+  for (let i = 0; i < buckets; i++) {
+    out.push(arr.slice(i * size, (i + 1) * size).reduce((s, x) => s + mapFn(x), 0));
+  }
+  return out;
+};
+
+// Real week-over-week-style trend derived from a bucketed series: compares
+// the earlier half of the window against the later half.
+const trendFromSeries = (series) => {
+  const total = series.reduce((a, b) => a + b, 0);
+  if (total === 0) return null; // nothing to compare — hide the badge instead of faking one
+  const mid = Math.floor(series.length / 2);
+  const early = series.slice(0, mid).reduce((a, b) => a + b, 0);
+  const late = series.slice(mid).reduce((a, b) => a + b, 0);
+  if (early === 0) return { pct: 100, up: true };
+  const pct = Math.round(((late - early) / early) * 100);
+  return { pct: Math.abs(pct), up: late >= early };
+};
+
+// Small ticking "X seconds/minutes ago" label so the live badge visibly moves.
+const LiveUpdatedLabel = ({ updatedAt, lang }) => {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!updatedAt) return null;
+  const secs = Math.max(0, Math.round((Date.now() - updatedAt) / 1000));
+  const text = secs < 5
+    ? (lang === 'bn' ? 'এইমাত্র' : 'just now')
+    : secs < 60
+      ? (lang === 'bn' ? `${secs} সেকেন্ড আগে` : `${secs}s ago`)
+      : (lang === 'bn' ? `${Math.floor(secs / 60)} মিনিট আগে` : `${Math.floor(secs / 60)}m ago`);
+  return <span>{text}</span>;
+};
 
 export default function DashboardOverview() {
-  const { reports } = useReports();
+  const {
+    reports,
+    lang,
+    isReportsLoading,
+    isReportsFetching,
+    reportsUpdatedAt,
+    refetchReports,
+  } = useReports();
 
   const totalReports  = reports.length;
   const totalLikes    = reports.reduce((s, r) => s + (r.likes || 0), 0);
-  const totalComments = reports.reduce((s, r) => s + (r.comments?.length || 0), 0);
+  const totalComments = reports.reduce((s, r) => s + (r.commentsCount ?? r.comments?.length ?? 0), 0);
   const totalAmount   = reports.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+
+  // Put reports in real chronological order (oldest → newest) wherever we
+  // have usable timestamps, so sparklines/trends read left-to-right sensibly.
+  const chronological = useMemo(() => {
+    const withTs = reports.map((r) => ({ r, ts: getReportTimestamp(r) }));
+    const anyValid = withTs.some((x) => !Number.isNaN(x.ts));
+    if (anyValid) {
+      return [...withTs].sort((a, b) => (Number.isNaN(a.ts) ? 0 : a.ts) - (Number.isNaN(b.ts) ? 0 : b.ts)).map((x) => x.r);
+    }
+    // No usable dates at all — assume the API returned newest-first and flip it.
+    return [...reports].reverse();
+  }, [reports]);
+
+  const reportsSeries  = useMemo(() => bucketize(chronological, () => 1), [chronological]);
+  const likesSeries    = useMemo(() => bucketize(chronological, (r) => r.likes || 0), [chronological]);
+  const commentsSeries = useMemo(() => bucketize(chronological, (r) => r.commentsCount ?? r.comments?.length ?? 0), [chronological]);
+  const amountSeries   = useMemo(() => bucketize(chronological, (r) => parseFloat(r.amount) || 0), [chronological]);
+
+  const reportsTrend  = useMemo(() => trendFromSeries(reportsSeries), [reportsSeries]);
+  const likesTrend    = useMemo(() => trendFromSeries(likesSeries), [likesSeries]);
+  const commentsTrend = useMemo(() => trendFromSeries(commentsSeries), [commentsSeries]);
+  const amountTrend   = useMemo(() => trendFromSeries(amountSeries), [amountSeries]);
 
   const categories = useMemo(() => {
     const map = {};
@@ -27,34 +113,97 @@ export default function DashboardOverview() {
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 6);
   }, [reports]);
 
-  const monthlyData = useMemo(() => {
-    const map = {};
-    reports.forEach(r => {
-      const key = r.month || r.date?.slice(0, 7) || 'Unknown';
-      map[key] = (map[key] || 0) + 1;
-    });
-    const vals = Object.values(map);
-    return vals.length ? vals.slice(-7) : [2, 5, 3, 8, 4, 10, 7];
+  const recentReports = useMemo(() => {
+    return [...reports].sort((a, b) => {
+      const tb = getReportTimestamp(b), ta = getReportTimestamp(a);
+      return (Number.isNaN(tb) ? 0 : tb) - (Number.isNaN(ta) ? 0 : ta);
+    }).slice(0, 5);
   }, [reports]);
 
-  const likesData = useMemo(() => {
-    const sorted = [...reports].sort((a, b) => (a.likes || 0) - (b.likes || 0));
-    return sorted.map(r => r.likes || 0).slice(-7);
+  const avgBribe = totalReports ? Math.round(totalAmount / totalReports) : 0;
+
+  const topDistrict = useMemo(() => {
+    const m = {};
+    reports.forEach(r => { if (r.district) m[r.district] = (m[r.district] || 0) + 1; });
+    const entries = Object.entries(m).sort((a, b) => b[1] - a[1]);
+    return entries.length ? entries[0][0] : (lang === 'bn' ? 'নেই' : 'N/A');
+  }, [reports, lang]);
+
+  const engagementRate = totalReports ? Math.round((totalLikes / totalReports) * 10) / 10 : 0;
+
+  // Real status breakdown for THIS page's overview strip (Overview page only).
+  const statusCounts = useMemo(() => {
+    const counts = { pending: 0, verified: 0, rejected: 0, archived: 0 };
+    reports.forEach(r => {
+      const s = r.status || 'pending';
+      if (counts[s] !== undefined) counts[s]++;
+      else counts.pending++;
+    });
+    return counts;
   }, [reports]);
+
+  const statusPct = (n) => (totalReports ? Math.round((n / totalReports) * 100) : 0);
+
+  const overviewItems = [
+    { icon: FileText,     label: lang === 'bn' ? 'মোট রিপোর্ট' : 'Total Reports', value: totalReports, color: '#3b82f6' },
+    { icon: Clock,        label: lang === 'bn' ? 'পেন্ডিং' : 'Pending',   value: statusCounts.pending,  color: '#f59e0b', percent: statusPct(statusCounts.pending) },
+    { icon: CheckCircle2, label: lang === 'bn' ? 'অনুমোদিত' : 'Approved', value: statusCounts.verified, color: '#22c55e', percent: statusPct(statusCounts.verified) },
+    { icon: XCircle,      label: lang === 'bn' ? 'বাতিল' : 'Rejected',    value: statusCounts.rejected, color: '#ef4444', percent: statusPct(statusCounts.rejected) },
+  ];
+
+  // First load with nothing cached yet — show a loading state instead of a
+  // dashboard full of misleading zeros.
+  if (isReportsLoading && reports.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-white/50 gap-3">
+        <Loader2 size={28} className="animate-spin text-green-400" />
+        <p className="text-sm">{lang === 'bn' ? 'লাইভ ডেটা লোড হচ্ছে...' : 'Loading live data...'}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
+      {/* Live status bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 -mb-2">
+        <div className="flex items-center gap-2 text-xs text-white/50">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-400"></span>
+          </span>
+          <span className="font-semibold text-green-400">{lang === 'bn' ? 'লাইভ' : 'Live'}</span>
+          <span className="text-white/30">•</span>
+          <span>
+            {lang === 'bn' ? 'সর্বশেষ সিঙ্ক: ' : 'Last synced: '}
+            <LiveUpdatedLabel updatedAt={reportsUpdatedAt} lang={lang} />
+          </span>
+        </div>
+        <button
+          onClick={() => refetchReports()}
+          disabled={isReportsFetching}
+          className="flex items-center gap-1.5 text-xs font-semibold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full border border-white/10 transition-colors cursor-pointer disabled:opacity-60"
+        >
+          <RefreshCw size={12} className={isReportsFetching ? 'animate-spin' : ''} />
+          {isReportsFetching
+            ? (lang === 'bn' ? 'সিঙ্ক হচ্ছে...' : 'Syncing...')
+            : (lang === 'bn' ? 'রিফ্রেশ করুন' : 'Refresh now')}
+        </button>
+      </div>
+
+      {/* Status overview strip — real counts for THIS page */}
+      <OverviewStrip items={overviewItems} />
+
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={FileText}    label="Total Reports"    value={totalReports}
-          trend={12} trendUp color="#22c55e" sparkData={monthlyData} sub="All time submissions" />
+          trend={reportsTrend?.pct} trendUp={reportsTrend?.up} color="#22c55e" sparkData={reportsSeries} sub="All time submissions" />
         <StatCard icon={ThumbsUp}    label="Total Reactions"  value={totalLikes}
-          trend={8}  trendUp color="#3b82f6" sparkData={likesData} sub="Community support" />
+          trend={likesTrend?.pct}  trendUp={likesTrend?.up} color="#3b82f6" sparkData={likesSeries} sub="Community support" />
         <StatCard icon={MessageSquare} label="Comments"       value={totalComments}
-          trend={5}  trendUp color="#a855f7" sparkData={[1,3,2,5,4,7,6]} sub="Public discussion" />
+          trend={commentsTrend?.pct}  trendUp={commentsTrend?.up} color="#a855f7" sparkData={commentsSeries} sub="Public discussion" />
         <StatCard icon={Database}    label="Bribe Amount"
           value={`৳${(totalAmount / 100000).toFixed(1)}L`}
-          trend={3} trendUp={false} color="#F42A41" sparkData={[5,8,6,12,9,15,11]} sub="Reported total" />
+          trend={amountTrend?.pct} trendUp={amountTrend?.up} color="#F42A41" sparkData={amountSeries} sub="Reported total" />
       </div>
 
       {/* Second row: Donut + Top categories + Divisions */}
@@ -63,21 +212,25 @@ export default function DashboardOverview() {
         <div className="rounded-2xl p-5 border border-white/10"
           style={{ background: 'linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))' }}>
           <h3 className="text-sm font-bold text-white mb-4">Category Distribution</h3>
-          <div className="flex items-center gap-4">
-            <DonutChart size={100}
-              segments={categories.slice(0, 5).map((c, i) => ({ value: c[1], color: CATEGORY_COLORS[i] }))} />
-            <div className="flex-1 space-y-2">
-              {categories.slice(0, 5).map(([cat, cnt], i) => (
-                <div key={cat} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: CATEGORY_COLORS[i] }} />
-                    <span className="text-xs text-white/70 truncate max-w-[90px]">{cat}</span>
+          {categories.length === 0 ? (
+            <p className="text-xs text-white/40">{lang === 'bn' ? 'কোনো ডেটা নেই' : 'No data yet'}</p>
+          ) : (
+            <div className="flex items-center gap-4">
+              <DonutChart size={100}
+                segments={categories.slice(0, 5).map((c, i) => ({ value: c[1], color: CATEGORY_COLORS[i] }))} />
+              <div className="flex-1 space-y-2">
+                {categories.slice(0, 5).map(([cat, cnt], i) => (
+                  <div key={cat} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: CATEGORY_COLORS[i] }} />
+                      <span className="text-xs text-white/70 truncate max-w-[90px]">{cat}</span>
+                    </div>
+                    <span className="text-xs font-bold text-white">{cnt}</span>
                   </div>
-                  <span className="text-xs font-bold text-white">{cnt}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Top Categories Bar */}
@@ -97,6 +250,7 @@ export default function DashboardOverview() {
                 </div>
               </div>
             ))}
+            {categories.length === 0 && <p className="text-xs text-white/40">{lang === 'bn' ? 'কোনো ডেটা নেই' : 'No data yet'}</p>}
           </div>
         </div>
 
@@ -118,6 +272,7 @@ export default function DashboardOverview() {
                 </div>
               </div>
             ))}
+            {divisions.length === 0 && <p className="text-xs text-white/40">{lang === 'bn' ? 'কোনো ডেটা নেই' : 'No data yet'}</p>}
           </div>
         </div>
       </div>
@@ -144,8 +299,8 @@ export default function DashboardOverview() {
               </tr>
             </thead>
             <tbody>
-              {reports.slice(0, 5).map(r => (
-                <tr key={r.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+              {recentReports.map(r => (
+                <tr key={r.id || r._id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                   <td className="px-5 py-3 text-sm text-white/80 truncate max-w-[200px]">{r.title}</td>
                   <td className="px-4 py-3">
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/10 text-white/70">{r.category}</span>
@@ -155,6 +310,13 @@ export default function DashboardOverview() {
                   <td className="px-4 py-3"><StatusBadge status={r.status || 'pending'} /></td>
                 </tr>
               ))}
+              {recentReports.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-center text-xs text-white/40">
+                    {lang === 'bn' ? 'এখনো কোনো রিপোর্ট নেই' : 'No reports yet'}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -163,9 +325,9 @@ export default function DashboardOverview() {
       {/* Quick stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Target, label: 'Avg Bribe', value: `৳${totalReports ? Math.round(totalAmount / totalReports).toLocaleString() : 0}`, color: '#F42A41' },
-          { icon: Award,  label: 'Top District', value: (() => { const m = {}; reports.forEach(r => { m[r.district] = (m[r.district]||0)+1; }); const e = Object.entries(m).sort((a,b)=>b[1]-a[1])[0]; return e ? e[0] : 'N/A'; })(), color: '#FFD700' },
-          { icon: Zap,    label: 'Engagement Rate', value: `${totalReports ? Math.round((totalLikes / totalReports) * 10) / 10 : 0}x`, color: '#a855f7' },
+          { icon: Target, label: 'Avg Bribe', value: `৳${avgBribe.toLocaleString()}`, color: '#F42A41' },
+          { icon: Award,  label: 'Top District', value: topDistrict, color: '#FFD700' },
+          { icon: Zap,    label: 'Engagement Rate', value: `${engagementRate}x`, color: '#a855f7' },
           { icon: Flag,   label: 'Divisions', value: divisions.length, color: '#3b82f6' },
         ].map(({ icon: Icon, label, value, color }) => (
           <div key={label} className="rounded-2xl p-4 border border-white/10 flex items-center gap-3"

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useReports } from '../context/ReportContext';
 import { OutcomeBadge, TypeBadge } from './ReportCard';
-import { Share2, MapPin, Building, Calendar, Scale, AlertCircle, Image, X, User, EyeOff, ChevronLeft, ChevronRight, ThumbsUp, MessageCircle, Send } from 'lucide-react';
+import CommentSection from './CommentSection';
+import ReactorsModal from './ReactorsModal';
+import { Share2, MapPin, Building, Calendar, Scale, AlertCircle, Image, X, User, EyeOff, ChevronLeft, ChevronRight, ThumbsUp } from 'lucide-react';
 
 const getReactionConfig = (lang) => [
   { type: 'like', emoji: '👍', label: lang === 'bn' ? 'লাইক' : 'Like', color: 'text-blue-600' },
@@ -12,19 +14,19 @@ const getReactionConfig = (lang) => [
 ];
 
 const DetailModal = () => {
-  const { selectedReport, setSelectedReport, reactToReport, addComment, triggerToast, t, lang } = useReports();
+  const { selectedReport, setSelectedReport, reactToReport, triggerToast, t, lang } = useReports();
   const [lightboxIndex, setLightboxIndex] = useState(null);
-  const [commentInput, setCommentInput] = useState('');
-  const [commenterName, setCommenterName] = useState('');
   const [showReactionsBar, setShowReactionsBar] = useState(false);
+  const [showReactorsModal, setShowReactorsModal] = useState(false);
 
   if (!selectedReport) return null;
 
+  const reportId = selectedReport.id || selectedReport._id;
   const photos = selectedReport.photos || [];
   const hasPhotos = photos.length > 0;
   const reactions = selectedReport.reactions || { like: selectedReport.likes || 0, love: 0, angry: 0, sad: 0, wow: 0 };
   const totalReactions = Object.values(reactions).reduce((a, b) => a + b, 0);
-  const comments = selectedReport.comments || [];
+  const commentsCount = selectedReport.commentsCount ?? (selectedReport.comments || []).length;
   const REACTION_CONFIG = getReactionConfig(lang);
   const currentReactionObj = REACTION_CONFIG.find(r => r.type === selectedReport.userReaction);
 
@@ -39,13 +41,6 @@ const DetailModal = () => {
       navigator.clipboard.writeText(window.location.href);
       triggerToast(t.linkCopied);
     }
-  };
-
-  const handleCommentSubmit = (e) => {
-    e.preventDefault();
-    if (!commentInput.trim()) return;
-    addComment(selectedReport.id, commentInput, commenterName);
-    setCommentInput('');
   };
 
   const handleQuickReaction = () => {
@@ -177,16 +172,49 @@ const DetailModal = () => {
             {/* Facebook Style Reaction Counts Summary */}
             <div className="flex items-center justify-between py-3 border-y border-gray-100 text-xs text-gray-600 mb-4">
               <div className="flex items-center gap-2">
-                <div className="flex -space-x-1">
-                  {reactions.like > 0 && <span>👍</span>}
-                  {reactions.love > 0 && <span>❤️</span>}
-                  {reactions.angry > 0 && <span>😡</span>}
-                  {reactions.sad > 0 && <span>😢</span>}
-                  {reactions.wow > 0 && <span>😮</span>}
-                </div>
-                <span className="font-semibold">{totalReactions} {t.reactionsCount}</span>
+                {totalReactions > 0 ? (
+                  <div
+                    className="relative group flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => setShowReactorsModal(true)}
+                    title={lang === 'bn' ? 'কে কোন রিয়েক্ট দিয়েছে দেখুন' : 'See who reacted'}
+                  >
+                    {/* Per-reaction breakdown pills */}
+                    <div className="flex items-center gap-1">
+                      {REACTION_CONFIG
+                        .filter(r => reactions[r.type] > 0)
+                        .sort((a, b) => reactions[b.type] - reactions[a.type])
+                        .map(r => (
+                          <span key={r.type} className="flex items-center gap-0.5 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
+                            <span className="text-sm leading-none">{r.emoji}</span>
+                            <span className="text-[11px] font-semibold text-gray-700">{reactions[r.type]}</span>
+                          </span>
+                        ))
+                      }
+                    </div>
+                    {/* Hover Tooltip */}
+                    <div className="absolute bottom-full left-0 mb-2 hidden group-hover:flex bg-gray-900 text-white rounded-xl shadow-xl px-3 py-2 flex-col gap-1 z-40 min-w-max text-[11px]">
+                      {REACTION_CONFIG
+                        .filter(r => reactions[r.type] > 0)
+                        .sort((a, b) => reactions[b.type] - reactions[a.type])
+                        .map(r => (
+                          <div key={r.type} className="flex items-center gap-2">
+                            <span>{r.emoji}</span>
+                            <span>{r.label}</span>
+                            <span className="ml-auto font-bold">{reactions[r.type]}</span>
+                          </div>
+                        ))
+                      }
+                      <div className="border-t border-gray-600 mt-1 pt-1 flex items-center justify-between font-semibold">
+                        <span>{t.reactionsCount}</span>
+                        <span>{totalReactions}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-gray-400">{t.firstReactPrompt}</span>
+                )}
               </div>
-              <span>{comments.length} {t.commentsCount}</span>
+              <span>{commentsCount} {t.commentsCount}</span>
             </div>
 
             {/* Actions Bar with Facebook Style Reactions */}
@@ -245,56 +273,9 @@ const DetailModal = () => {
               </button>
             </div>
 
-            {/* Comments Section */}
+            {/* Comments & Replies Section (backed by real Comment API — tracks logged-in users via Firebase uid, others via browser device id) */}
             <div className="bg-gray-50 rounded-2xl p-4 sm:p-5 border border-gray-200">
-              <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-1.5">
-                <MessageCircle size={16} className="text-[#006A4E]" />
-                {lang === 'bn' ? 'মন্তব্যসমূহ' : 'Comments'} ({comments.length})
-              </h3>
-
-              {/* Comments List */}
-              <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-1">
-                {comments.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-3">{t.noCommentsYet}</p>
-                ) : (
-                  comments.map(c => (
-                    <div key={c.id} className="bg-white rounded-xl p-3 border border-gray-100 shadow-2xs">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-xs text-gray-800">{c.author}</span>
-                        <span className="text-[10px] text-gray-400 font-mono">{c.date}</span>
-                      </div>
-                      <p className="text-xs text-gray-700 leading-relaxed">{c.text}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Add Comment Form */}
-              <form onSubmit={handleCommentSubmit} className="space-y-2">
-                <input
-                  type="text"
-                  value={commenterName}
-                  onChange={(e) => setCommenterName(e.target.value)}
-                  placeholder={t.yourNameOptional}
-                  className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#006A4E]"
-                />
-                <div className="flex gap-2">
-                  <textarea
-                    rows={2}
-                    required
-                    value={commentInput}
-                    onChange={(e) => setCommentInput(e.target.value)}
-                    placeholder={t.writeCommentPlaceholder}
-                    className="flex-1 px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-none focus:border-[#006A4E] leading-relaxed resize-none"
-                  />
-                  <button
-                    type="submit"
-                    className="bg-[#006A4E] hover:bg-[#004d38] text-white px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors shrink-0"
-                  >
-                    <Send size={14} /> {t.postBtn}
-                  </button>
-                </div>
-              </form>
+              <CommentSection reportId={reportId} />
             </div>
 
           </div>
@@ -339,6 +320,17 @@ const DetailModal = () => {
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {/* কে কোন রিয়েক্ট দিয়েছে — তালিকা (Facebook-style) */}
+      {showReactorsModal && (
+        <ReactorsModal
+          targetType="report"
+          targetId={reportId}
+          reactions={reactions}
+          lang={lang}
+          onClose={() => setShowReactorsModal(false)}
+        />
       )}
     </>
   );

@@ -13,12 +13,12 @@ import {
 } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCMJ8VDGGFIyj6xvIcJloxQvN01LGjmr9Q",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "sakkhi-d9dc6.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "sakkhi-d9dc6",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sakkhi-d9dc6.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "124772812947",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:124772812947:web:352e49b671b486011e2566"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase safely

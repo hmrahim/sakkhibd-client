@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useReports } from '../context/ReportContext';
-import { Building, MapPin, Calendar, Scale, MessageCircle, Share2, ThumbsUp, Send, Image as ImageIcon, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
+import CommentSection from './CommentSection';
+import { Building, MapPin, Calendar, Scale, MessageCircle, Share2, ThumbsUp, Image as ImageIcon, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import { COMPLAINT_TYPES } from '../data/initialData';
 
 const OutcomeBadge = ({ outcome, lang = 'bn' }) => {
@@ -51,14 +52,13 @@ const getReactionConfig = (lang) => [
 ];
 
 const ReportCard = ({ report }) => {
-  const { setSelectedReport, reactToReport, addComment, triggerToast, t, lang } = useReports();
+  const { setSelectedReport, reactToReport, triggerToast, t, lang } = useReports();
   const [showReactionsBar, setShowReactionsBar] = useState(false);
   const [showCommentBox, setShowCommentBox] = useState(false);
-  const [commentInput, setCommentInput] = useState('');
-  const [commenterName, setCommenterName] = useState('');
   const [lightboxIndex, setLightboxIndex] = useState(null);
 
   const photos = report.photos || [];
+  const reportId = report.id || report._id;
   const REACTION_CONFIG = getReactionConfig(lang);
 
   const barColorMap = {
@@ -71,7 +71,7 @@ const ReportCard = ({ report }) => {
 
   const reactions = report.reactions || { like: report.likes || 0, love: 0, angry: 0, sad: 0, wow: 0 };
   const totalReactions = Object.values(reactions).reduce((a, b) => a + b, 0);
-  const comments = report.comments || [];
+  const commentsCount = report.commentsCount ?? (report.comments || []).length;
   const currentReactionObj = REACTION_CONFIG.find(r => r.type === report.userReaction);
 
   const handleQuickReaction = (e) => {
@@ -87,14 +87,6 @@ const ReportCard = ({ report }) => {
     e.stopPropagation();
     reactToReport(report.id, type);
     setShowReactionsBar(false);
-  };
-
-  const handleCommentSubmit = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!commentInput.trim()) return;
-    addComment(report.id, commentInput, commenterName);
-    setCommentInput('');
   };
 
   const handleShare = (e) => {
@@ -255,16 +247,40 @@ const ReportCard = ({ report }) => {
       <div className="px-5 py-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500 select-none">
         <div className="flex items-center gap-1.5">
           {totalReactions > 0 ? (
-            <>
-              <div className="flex -space-x-1">
-                {reactions.like > 0 && <span className="inline-block text-sm">👍</span>}
-                {reactions.love > 0 && <span className="inline-block text-sm">❤️</span>}
-                {reactions.angry > 0 && <span className="inline-block text-sm">😡</span>}
-                {reactions.sad > 0 && <span className="inline-block text-sm">😢</span>}
-                {reactions.wow > 0 && <span className="inline-block text-sm">😮</span>}
+            <div className="relative group flex items-center gap-1.5 cursor-default">
+              {/* Per-reaction breakdown: emoji + count for each reaction > 0, sorted by count */}
+              <div className="flex items-center gap-1">
+                {REACTION_CONFIG
+                  .filter(r => reactions[r.type] > 0)
+                  .sort((a, b) => reactions[b.type] - reactions[a.type])
+                  .map(r => (
+                    <span key={r.type} className="flex items-center gap-0.5 bg-gray-50 border border-gray-200 rounded-full px-1.5 py-0.5">
+                      <span className="text-xs leading-none">{r.emoji}</span>
+                      <span className="text-[10px] font-semibold text-gray-600">{reactions[r.type]}</span>
+                    </span>
+                  ))
+                }
               </div>
-              <span className="text-[11px] font-medium text-gray-600">{totalReactions} {t.reactionsCount}</span>
-            </>
+
+              {/* Hover Tooltip: Full breakdown */}
+              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:flex bg-gray-900 text-white rounded-xl shadow-xl px-3 py-2 flex-col gap-1 z-40 min-w-max text-[11px]">
+                {REACTION_CONFIG
+                  .filter(r => reactions[r.type] > 0)
+                  .sort((a, b) => reactions[b.type] - reactions[a.type])
+                  .map(r => (
+                    <div key={r.type} className="flex items-center gap-2">
+                      <span>{r.emoji}</span>
+                      <span>{r.label}</span>
+                      <span className="ml-auto font-bold">{reactions[r.type]}</span>
+                    </div>
+                  ))
+                }
+                <div className="border-t border-gray-600 mt-1 pt-1 flex items-center justify-between font-semibold">
+                  <span>{t.reactionsCount}</span>
+                  <span>{totalReactions}</span>
+                </div>
+              </div>
+            </div>
           ) : (
             <span className="text-[11px] text-gray-400">{t.firstReactPrompt}</span>
           )}
@@ -275,7 +291,7 @@ const ReportCard = ({ report }) => {
           onClick={(e) => { e.stopPropagation(); setShowCommentBox(!showCommentBox); }}
           className="text-[11px] hover:underline cursor-pointer text-gray-500 flex items-center gap-1"
         >
-          {comments.length} {t.commentsCount}
+          {commentsCount} {t.commentsCount}
         </button>
       </div>
 
@@ -349,52 +365,10 @@ const ReportCard = ({ report }) => {
         </button>
       </div>
 
-      {/* Expandable Comments Section */}
+      {/* Expandable Comments Section (real Comment API — replies, likes, edit/delete, identity tracked) */}
       {showCommentBox && (
-        <div className="p-4 bg-gray-50 border-t border-gray-100 space-y-3 animate-fade-in" onClick={e => e.stopPropagation()}>
-          {/* Comments List */}
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-            {comments.length === 0 ? (
-              <p className="text-[11px] text-gray-400 text-center py-2">{t.noCommentsYet}</p>
-            ) : (
-              comments.map((c) => (
-                <div key={c.id} className="bg-white rounded-xl p-2.5 border border-gray-100 shadow-2xs text-xs">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-gray-800 text-[11px]">{c.author}</span>
-                    <span className="text-[10px] text-gray-400 font-mono">{c.date}</span>
-                  </div>
-                  <p className="text-gray-700 text-xs leading-relaxed">{c.text}</p>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Comment Form */}
-          <form onSubmit={handleCommentSubmit} className="space-y-2 pt-1 border-t border-gray-200">
-            <input
-              type="text"
-              value={commenterName}
-              onChange={(e) => setCommenterName(e.target.value)}
-              placeholder={t.yourNameOptional}
-              className="w-full px-3 py-1.5 text-[11px] bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-[#006A4E]"
-            />
-            <div className="flex gap-2">
-              <input
-                type="text"
-                required
-                value={commentInput}
-                onChange={(e) => setCommentInput(e.target.value)}
-                placeholder={t.writeCommentPlaceholder}
-                className="flex-1 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-[#006A4E]"
-              />
-              <button
-                type="submit"
-                className="bg-[#006A4E] hover:bg-[#004d38] text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-              >
-                <Send size={12} /> {t.sendBtn}
-              </button>
-            </div>
-          </form>
+        <div className="p-4 bg-gray-50 border-t border-gray-100 animate-fade-in" onClick={e => e.stopPropagation()}>
+          <CommentSection reportId={reportId} />
         </div>
       )}
 

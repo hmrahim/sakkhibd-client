@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useReports } from '../../context/ReportContext';
-import { TrendingUp } from 'lucide-react';
-import { Sparkline, CATEGORY_COLORS } from './DashboardCommon';
+import { TrendingUp, BarChart3, Layers, ThumbsUp } from 'lucide-react';
+import { Sparkline, CATEGORY_COLORS, OverviewStrip } from './DashboardCommon';
 
 export default function DashboardAnalytics() {
   const { reports } = useReports();
@@ -12,6 +12,17 @@ export default function DashboardAnalytics() {
     reports.forEach(r => { map[r.category] = (map[r.category] || 0) + 1; });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [reports]);
+
+  const totalLikes = useMemo(() => reports.reduce((s, r) => s + (r.likes || 0), 0), [reports]);
+  const avgEngagement = totalReports ? Math.round((totalLikes / totalReports) * 10) / 10 : 0;
+
+  // Real analytics-specific stats for THIS page.
+  const overviewItems = [
+    { icon: BarChart3, label: 'Total Reports',    value: totalReports,       color: '#3b82f6' },
+    { icon: Layers,    label: 'Categories Tracked', value: categories.length, color: '#a855f7' },
+    { icon: ThumbsUp,  label: 'Total Reactions',  value: totalLikes,         color: '#22c55e' },
+    { icon: TrendingUp, label: 'Avg Reactions/Report', value: avgEngagement, color: '#f59e0b' },
+  ];
 
   const monthlyData = useMemo(() => {
     const map = {};
@@ -30,6 +41,7 @@ export default function DashboardAnalytics() {
 
   return (
     <div className="space-y-6">
+      <OverviewStrip items={overviewItems} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Reports over time */}
         <div className="rounded-2xl p-5 border border-white/10"

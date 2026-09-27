@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useReports } from '../../context/ReportContext';
-import { Tag } from 'lucide-react';
-import { CATEGORY_COLORS } from './DashboardCommon';
+import { Tag, Layers, TrendingUp, BarChart2 } from 'lucide-react';
+import { CATEGORY_COLORS, OverviewStrip } from './DashboardCommon';
 
 export default function DashboardCategories() {
   const { reports } = useReports();
@@ -13,8 +13,17 @@ export default function DashboardCategories() {
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [reports]);
 
+  // Real category-specific stats for THIS page.
+  const overviewItems = [
+    { icon: Layers,    label: 'Active Categories', value: categories.length, color: '#3b82f6' },
+    { icon: Tag,       label: 'Top Category', value: categories[0]?.[0] || 'N/A', color: '#22c55e' },
+    { icon: BarChart2, label: 'Top Category Count', value: categories[0]?.[1] || 0, color: '#F42A41' },
+    { icon: TrendingUp, label: 'Avg / Category', value: categories.length ? Math.round(totalReports / categories.length) : 0, color: '#a855f7' },
+  ];
+
   return (
     <div className="space-y-5">
+      <OverviewStrip items={overviewItems} />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories.map(([cat, cnt], i) => (
           <div key={cat} className="rounded-2xl p-5 border border-white/10 hover:border-white/20 transition-all group"

@@ -38,6 +38,7 @@ const normalizeReport = (r) => ({
   reactions: r.reactions || { like: r.likes || 0, love: 0, angry: 0, sad: 0, wow: 0 },
   userReaction: r.userReaction || null,
   comments: r.comments || [],
+  commentsCount: r.commentsCount ?? (r.comments || []).length,
   photos: r.proofImages || r.photos || [],
 });
 
@@ -93,7 +94,7 @@ const Home = () => {
     { key: 'বিআরটিএ', emoji: '🚗', label: lang === 'bn' ? 'বিআরটিএ' : 'BRTA', sub: 'BRTA' },
     { key: 'ট্রাফিক পুলিশ', emoji: '🚔', label: lang === 'bn' ? 'ট্রাফিক পুলিশ' : 'Traffic Police', sub: 'Police' },
     { key: 'কাস্টমস অফিস', emoji: '🚢', label: lang === 'bn' ? 'কাস্টমস' : 'Customs', sub: 'Customs' },
-  { key: 'কর ও ভ্যাট অফিস', emoji: '💰', label: lang === 'bn' ? 'কর ও ভ্যাট' : 'Tax & VAT', sub: 'Tax & VAT' },
+    { key: 'কর ও ভ্যাট অফিস', emoji: '💰', label: lang === 'bn' ? 'কর ও ভ্যাট' : 'Tax & VAT', sub: 'Tax & VAT' },
     { key: 'সিটি কর্পোরেশন', emoji: '🏛️', label: lang === 'bn' ? 'সিটি কর্পোরেশন' : 'City Corporation', sub: 'City Corp' },
     { key: 'সরকারি হাসপাতাল', emoji: '🏥', label: lang === 'bn' ? 'হাসপাতাল' : 'Govt Hospital', sub: 'Hospital' },
   ];
@@ -149,6 +150,12 @@ const Home = () => {
     setHomeThana('');
     setHomeSearch('');
   };
+
+  // Home page only ever teases a preview of the reports (3 per row × 4 rows).
+  // The full list always lives on the Complaints page (/blogs).
+  const HOME_REPORTS_LIMIT = 12;
+  const homeReportsToShow = filteredHomeReports.slice(0, HOME_REPORTS_LIMIT);
+  const hasMoreThanHomeLimit = filteredHomeReports.length > HOME_REPORTS_LIMIT;
 
   return (
     <div>
@@ -663,7 +670,7 @@ const Home = () => {
           {/* Reports Grid */}
           {isHomeFilterLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
+              {[...Array(12)].map((_, i) => (
                 <div key={i} className="bg-white rounded-2xl border border-gray-100 h-64 animate-pulse" />
               ))}
             </div>
@@ -680,11 +687,29 @@ const Home = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredHomeReports.map(report => (
-                <ReportCard key={report.id} report={report} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {homeReportsToShow.map(report => (
+                  <ReportCard key={report.id} report={report} />
+                ))}
+              </div>
+
+              {/* View All -> Complaints page, shown whenever there are more
+                  reports than the home page preview limit */}
+              {hasMoreThanHomeLimit && (
+                <div className="flex justify-center mt-8">
+                  <Link
+                    to="/blogs"
+                    className="bg-[#006A4E] hover:bg-[#004d38] text-white px-6 py-3 rounded-full text-sm font-bold transition-all shadow flex items-center gap-2 no-underline cursor-pointer"
+                  >
+                    {lang === 'bn'
+                      ? `সব ${filteredHomeReports.length} টি রিপোর্ট দেখুন`
+                      : `View All ${filteredHomeReports.length} Reports`}
+                    <ArrowRight size={16} />
+                  </Link>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

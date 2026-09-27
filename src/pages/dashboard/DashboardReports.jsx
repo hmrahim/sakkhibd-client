@@ -2,9 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { useReports } from '../../context/ReportContext';
 import {
   Search, Download, Trash2, Eye, Edit3, CheckCircle,
-  XCircle, Clock, ChevronDown, ChevronUp, ChevronRight, Check
+  XCircle, Clock, ChevronDown, ChevronUp, ChevronRight, Check,
+  FileText, Filter
 } from 'lucide-react';
-import { StatusBadge } from './DashboardCommon';
+import { StatusBadge, OverviewStrip } from './DashboardCommon';
 
 export default function DashboardReports() {
   const {
@@ -65,6 +66,26 @@ export default function DashboardReports() {
     return list;
   }, [reports, search, filterCategory, filterStatus, sortBy, sortDir, reportStatuses]);
 
+  // Real status pipeline for THIS page — reflects local status overrides
+  // (reportStatuses) the same way the table rows do, so the strip never
+  // drifts from what's actually shown below it.
+  const statusCounts = useMemo(() => {
+    const counts = { pending: 0, verified: 0, rejected: 0, archived: 0 };
+    reports.forEach(r => {
+      const s = reportStatuses[r.id] || r.status || 'pending';
+      if (counts[s] !== undefined) counts[s]++;
+      else counts.pending++;
+    });
+    return counts;
+  }, [reports, reportStatuses]);
+
+  const overviewItems = [
+    { icon: FileText, label: 'Total Reports',  value: reports.length,           color: '#3b82f6' },
+    { icon: Filter,    label: 'Showing (filtered)', value: filtered.length,     color: '#8b5cf6' },
+    { icon: Clock,     label: 'Pending',        value: statusCounts.pending,    color: '#f59e0b' },
+    { icon: CheckCircle, label: 'Verified',     value: statusCounts.verified,   color: '#22c55e' },
+  ];
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
@@ -108,6 +129,9 @@ export default function DashboardReports() {
 
   return (
     <div className="space-y-5">
+      {/* Overview strip — real counts for THIS page */}
+      <OverviewStrip items={overviewItems} />
+
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">

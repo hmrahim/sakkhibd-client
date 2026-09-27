@@ -18,6 +18,7 @@ const normalizeReport = (r) => ({
   reactions: r.reactions || { like: r.likes || 0, love: 0, angry: 0, sad: 0, wow: 0 },
   userReaction: r.userReaction || null,
   comments: r.comments || [],
+  commentsCount: r.commentsCount ?? (r.comments || []).length,
   photos: r.proofImages || r.photos || [],
 });
 
@@ -338,7 +339,7 @@ const Blogs = () => {
                   {loadedReports.map(b => {
                     const reactions = b.reactions || { like: b.likes || 0 };
                     const total = Object.values(reactions).reduce((x, y) => x + y, 0);
-                    const commentsCount = (b.comments || []).length;
+                    const commentsCount = b.commentsCount ?? (b.comments || []).length;
                     return (
                       <tr
                         key={b.id}

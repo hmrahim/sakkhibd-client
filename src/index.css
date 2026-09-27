@@ -138,3 +138,40 @@ html, body {
 .animate-fade-in {
   animation: fadeIn 0.25s ease-out forwards;
 }
+
+/* ReactorsModal-এর ট্যাব রো-তে স্ক্রলবার লুকানোর জন্য */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Mobile app-shell helpers ─────────────────────────────────────── */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+
+.mobile-bottom-nav {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid rgba(0, 106, 78, 0.12);
+  box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.10);
+}
+
+.fab-glow {
+  box-shadow: 0 8px 18px rgba(244, 42, 65, 0.45), 0 0 0 6px rgba(244, 42, 65, 0.10);
+}
+
+/* Give mobile pages breathing room above the fixed bottom tab bar */
+@media (max-width: 1279px) {
+  .mobile-app-content {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  }
+}

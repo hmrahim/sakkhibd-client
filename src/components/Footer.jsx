@@ -45,6 +45,7 @@ const Footer = () => {
             <ul className="space-y-2 text-green-200 text-xs sm:text-sm">
               <li><Link to="/" className="hover:text-[#FFD700] transition-colors">{t.navHome}</Link></li>
               <li><Link to="/blogs" className="hover:text-[#FFD700] transition-colors">{t.navBlogs}</Link></li>
+              <li><Link to="/articles" className="hover:text-[#FFD700] transition-colors">{lang === 'bn' ? '📰 আর্টিকেল' : '📰 Articles'}</Link></li>
               <li><Link to="/ledger" className="hover:text-[#FFD700] transition-colors">{t.navLedger}</Link></li>
               <li><Link to="/analytics" className="hover:text-[#FFD700] transition-colors">{t.navAnalytics}</Link></li>
               <li><Link to="/hierarchy" className="hover:text-[#FFD700] transition-colors">{t.navHierarchy}</Link></li>

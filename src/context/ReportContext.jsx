@@ -9,7 +9,6 @@ import {
   deleteReportApi,
   bulkDeleteReportsApi,
   reactToReportApi,
-  addCommentApi,
   getAnalyticsSummaryApi,
 } from '../api/reportApi';
 
@@ -57,16 +56,21 @@ export const ReportProvider = ({ children }) => {
   const {
     data: apiReportsData,
     isLoading: isReportsLoading,
+    isFetching: isReportsFetching,
     isError: isReportsError,
     error: reportsFetchError,
     refetch: refetchReports,
+    dataUpdatedAt: reportsUpdatedAt,
   } = useQuery({
     queryKey: ['reports'],
     queryFn: async () => {
       const res = await getReportsApi({ limit: 200 });
       return res?.data || [];
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes fresh
+    staleTime: 1000 * 15, // 15s fresh
+    refetchInterval: 1000 * 20, // poll every 20s so open dashboards/pages stay live
+    refetchIntervalInBackground: false, // pause polling when the tab isn't focused
+    refetchOnWindowFocus: true, // instantly re-sync when the user comes back to the tab
     retry: 1,
   });
 
@@ -105,6 +109,7 @@ export const ReportProvider = ({ children }) => {
           reactions: r.reactions || { like: r.likes || 0, love: 0, angry: 0, sad: 0, wow: 0 },
           userReaction: r.userReaction || null,
           comments: r.comments || [],
+          commentsCount: r.commentsCount ?? (r.comments || []).length,
         }));
       } catch (e) {
         console.error("Failed to parse cached reports", e);
@@ -134,6 +139,7 @@ export const ReportProvider = ({ children }) => {
         reactions: r.reactions || { like: r.likes || 0, love: 0, angry: 0, sad: 0, wow: 0 },
         userReaction: r.userReaction || null,
         comments: r.comments || [],
+        commentsCount: r.commentsCount ?? (r.comments || []).length,
         photos: r.proofImages || r.photos || [],
       }));
       setReports(normalized);
@@ -286,85 +292,63 @@ export const ReportProvider = ({ children }) => {
   const reactToReport = async (reportId, reactionType) => {
     const target = reports.find(r => r.id === reportId || r._id === reportId);
     const previousReaction = target?.userReaction;
+    // পুরানো reactions snapshot রাখি rollback-এর জন্য
+    const previousReactions = target ? { ...(target.reactions || {}) } : null;
 
-    // Optimistic UI update
-    setReports(prev => prev.map(report => {
-      if (report.id !== reportId && report._id !== reportId) return report;
+    // ---- Optimistic UI update ----
+    const applyOptimisticUpdate = (isToggleOff) => {
+      setReports(prev => prev.map(report => {
+        if (report.id !== reportId && report._id !== reportId) return report;
+        const currentReactions = { ...(report.reactions || { like: 0, love: 0, angry: 0, sad: 0, wow: 0 }) };
 
-      const currentReactions = { ...(report.reactions || { like: 0, love: 0, angry: 0, sad: 0, wow: 0 }) };
+        if (isToggleOff) {
+          currentReactions[reactionType] = Math.max(0, (currentReactions[reactionType] || 1) - 1);
+          const total = Object.values(currentReactions).reduce((a, b) => a + b, 0);
+          return { ...report, reactions: currentReactions, userReaction: null, likes: total };
+        }
 
-      if (previousReaction === reactionType) {
-        currentReactions[reactionType] = Math.max(0, (currentReactions[reactionType] || 1) - 1);
+        if (previousReaction && currentReactions[previousReaction] !== undefined) {
+          currentReactions[previousReaction] = Math.max(0, currentReactions[previousReaction] - 1);
+        }
+        currentReactions[reactionType] = (currentReactions[reactionType] || 0) + 1;
         const total = Object.values(currentReactions).reduce((a, b) => a + b, 0);
-        return {
-          ...report,
-          reactions: currentReactions,
-          userReaction: null,
-          likes: total
-        };
-      }
-
-      if (previousReaction && currentReactions[previousReaction] !== undefined) {
-        currentReactions[previousReaction] = Math.max(0, currentReactions[previousReaction] - 1);
-      }
-
-      currentReactions[reactionType] = (currentReactions[reactionType] || 0) + 1;
-      const total = Object.values(currentReactions).reduce((a, b) => a + b, 0);
-
-      return {
-        ...report,
-        reactions: currentReactions,
-        userReaction: reactionType,
-        likes: total
-      };
-    }));
-
-    // Send to backend
-    try {
-      if (typeof reportId === 'string' && reportId.length === 24) {
-        await reactToReportApi(reportId, { reactionType, previousReaction });
-      }
-    } catch (err) {
-      console.warn('Backend react call skipped or failed:', err);
-    }
-  };
-
-  // Add comment handler
-  const addComment = async (reportId, commentText, authorName) => {
-    if (!commentText || !commentText.trim()) return;
-
-    const defaultAuthor = lang === 'bn' ? 'বেনামী নাগরিক' : 'Anonymous Citizen';
-    const author = authorName?.trim() || defaultAuthor;
-    const text = commentText.trim();
-
-    const newComment = {
-      id: Date.now(),
-      author,
-      text,
-      date: lang === 'bn' ? 'এইমাত্র' : 'Just now'
+        return { ...report, reactions: currentReactions, userReaction: reactionType, likes: total };
+      }));
     };
 
-    // Optimistic update
-    setReports(prev => prev.map(report => {
-      if (report.id === reportId || report._id === reportId) {
-        return {
-          ...report,
-          comments: [...(report.comments || []), newComment]
-        };
-      }
-      return report;
-    }));
+    const isToggleOff = previousReaction === reactionType;
+    applyOptimisticUpdate(isToggleOff);
 
-    triggerToast(lang === 'bn' ? 'মন্তব্য যুক্ত হয়েছে!' : 'Comment added!', 'success');
-
-    // Send to backend
+    // ---- Backend sync ----
     try {
       if (typeof reportId === 'string' && reportId.length === 24) {
-        await addCommentApi(reportId, { author, text });
-        queryClient.invalidateQueries({ queryKey: ['reports'] });
+        const res = await reactToReportApi(reportId, { reactionType });
+        // Backend response দিয়ে accurate state সেট করি
+        const serverData = res?.data || res;
+        if (serverData?.reactions !== undefined) {
+          setReports(prev => prev.map(report => {
+            if (report.id !== reportId && report._id !== reportId) return report;
+            return {
+              ...report,
+              reactions: serverData.reactions,
+              userReaction: serverData.userReaction !== undefined ? serverData.userReaction : report.userReaction,
+              likes: serverData.likes ?? report.likes,
+            };
+          }));
+        }
       }
     } catch (err) {
-      console.warn('Backend addComment call failed:', err);
+      console.warn('Backend react call failed, rolling back:', err);
+      // Rollback to previous state
+      setReports(prev => prev.map(report => {
+        if (report.id !== reportId && report._id !== reportId) return report;
+        return {
+          ...report,
+          reactions: previousReactions || report.reactions,
+          userReaction: previousReaction,
+          likes: previousReactions ? Object.values(previousReactions).reduce((a, b) => a + b, 0) : report.likes,
+        };
+      }));
     }
   };
 
@@ -414,7 +398,6 @@ export const ReportProvider = ({ children }) => {
       deleteMultipleReports,
       likeReport,
       reactToReport,
-      addComment,
       exportToCSV,
       triggerToast,
       closeToast,
@@ -426,8 +409,10 @@ export const ReportProvider = ({ children }) => {
       isSubmitModalOpen,
       setIsSubmitModalOpen,
       isReportsLoading,
+      isReportsFetching,
       isReportsError,
       reportsFetchError,
+      reportsUpdatedAt,
       refetchReports,
       createReportMutation,
       analyticsData,

@@ -39,6 +39,11 @@ export const reactToReportApi = async (id, payload) => {
   return await axiosInstance.post(`/reports/${id}/react`, payload);
 };
 
+// কে কোন রিয়েক্ট দিয়েছে — তালিকা (Facebook-style "who reacted" list)
+export const getReportReactorsApi = async (id) => {
+  return await axiosInstance.get(`/reports/${id}/reactors`);
+};
+
 // Add comment to a report
 export const addCommentApi = async (id, payload) => {
   return await axiosInstance.post(`/reports/${id}/comments`, payload);
